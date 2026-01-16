@@ -14,6 +14,34 @@ local function normalize_color(color)
   return color
 end
 
+local function blend_hex(foreground, background, alpha)
+  if type(foreground) ~= "string" or type(background) ~= "string" then
+    return foreground
+  end
+  if foreground == "NONE" or background == "NONE" then
+    return foreground
+  end
+  if not foreground:match "^#%x%x%x%x%x%x$" or not background:match "^#%x%x%x%x%x%x$" then
+    return foreground
+  end
+
+  local fr = tonumber(foreground:sub(2, 3), 16)
+  local fg = tonumber(foreground:sub(4, 5), 16)
+  local fb = tonumber(foreground:sub(6, 7), 16)
+  local br = tonumber(background:sub(2, 3), 16)
+  local bg = tonumber(background:sub(4, 5), 16)
+  local bb = tonumber(background:sub(6, 7), 16)
+
+  local function mix(fg_c, bg_c)
+    return math.floor((alpha * fg_c) + ((1 - alpha) * bg_c) + 0.5)
+  end
+
+  local r = mix(fr, br)
+  local g = mix(fg, bg)
+  local b = mix(fb, bb)
+  return string.format("#%02x%02x%02x", r, g, b)
+end
+
 local function set(name, values)
   if values.fg then
     values.fg = normalize_color(values.fg)
@@ -45,7 +73,7 @@ local function syntax_groups(colors, opts)
     String = { fg = colors.green },
     Character = { fg = colors.green },
     Number = { fg = colors.orange },
-    Boolean = { fg = colors.orange },
+    Boolean = { fg = colors.red },
     Float = { fg = colors.orange },
     Identifier = { fg = colors.fg },
     Function = { fg = colors.blue },
@@ -64,35 +92,42 @@ local function syntax_groups(colors, opts)
     StorageClass = { fg = colors.purple },
     Structure = { fg = colors.purple },
     Typedef = { fg = colors.purple },
-    Special = { fg = colors.pink },
+    Special = { fg = colors.teal },
     Delimiter = { fg = colors.dim },
     SpecialComment = { fg = colors.dim, italic = italic },
     Debug = { fg = colors.red },
     ["@comment"] = { fg = colors.dim, italic = italic },
-    ["@variable"] = { fg = colors.fg },
-    ["@variable.member"] = { fg = colors.fg },
+    ["@variable"] = { fg = colors.salmon },
+    ["@variable.member"] = { fg = colors.orange },
     ["@variable.parameter"] = { fg = colors.pink },
     ["@variable.builtin"] = { fg = colors.orange, italic = italic },
     ["@field"] = { fg = colors.pink },
-    ["@property"] = { fg = colors.orange },
+    ["@property"] = { fg = colors.salmon },
     ["@parameter"] = { fg = colors.pink },
     ["@constant"] = { fg = colors.orange },
     ["@constant.builtin"] = { fg = colors.orange },
     ["@number"] = { fg = colors.orange },
-    ["@boolean"] = { fg = colors.orange },
+    ["@boolean"] = { fg = colors.red },
     ["@string"] = { fg = colors.green },
-    ["@string.escape"] = { fg = colors.orange },
-    ["@string.special"] = { fg = colors.teal },
+    ["@string.escape"] = { fg = colors.red },
+    ["@string.special"] = { fg = colors.red },
+    ["@string.regexp"] = { fg = colors.red },
     ["@character"] = { fg = colors.green },
+    ["@character.special"] = { fg = colors.teal },
     ["@constructor"] = { fg = colors.purple },
     ["@type"] = { fg = colors.purple },
     ["@type.builtin"] = { fg = colors.purple },
     ["@type.definition"] = { fg = colors.purple },
-    ["@keyword"] = { fg = colors.yellow, italic = italic },
-    ["@keyword.function"] = { fg = colors.yellow, italic = italic },
+    ["@keyword"] = { fg = colors.teal, italic = italic },
+    ["@keyword.function"] = { fg = colors.teal, italic = italic },
     ["@keyword.return"] = { fg = colors.yellow, italic = italic },
     ["@keyword.operator"] = { fg = colors.yellow },
     ["@keyword.import"] = { fg = colors.yellow, italic = italic },
+    ["@keyword.modifier"] = { fg = colors.yellow, italic = italic },
+    ["@keyword.conditional"] = { fg = colors.yellow, italic = italic },
+    ["@keyword.repeat"] = { fg = colors.yellow, italic = italic },
+    ["@keyword.coroutine"] = { fg = colors.yellow, italic = italic },
+    ["@keyword.type"] = { fg = colors.teal, italic = italic },
     ["@function"] = { fg = colors.blue },
     ["@function.builtin"] = { fg = colors.blue },
     ["@function.call"] = { fg = colors.blue },
@@ -113,6 +148,19 @@ local function syntax_groups(colors, opts)
     ["@markup.link"] = { fg = colors.blue, underline = true },
     ["@markup.list"] = { fg = colors.blue },
     ["@markup.raw"] = { fg = colors.purple },
+
+    -- LSP semantic tokens
+    ["@lsp.type.class"] = { fg = colors.purple },
+    ["@lsp.typemod.class.declaration"] = { fg = colors.purple },
+    ["@lsp.typemod.class.decorator"] = { fg = colors.pink },
+    ["@lsp.type.enumMember"] = { fg = colors.purple },
+    ["@lsp.type.decorator"] = { fg = colors.pink },
+    ["@lsp.type.namespace"] = { fg = colors.blue },
+    ["@lsp.type.parameter"] = { fg = colors.pink },
+    ["@lsp.type.property"] = { fg = colors.orange },
+    ["@lsp.typemod.property.declaration"] = { fg = colors.fg },
+    ["@lsp.type.variable"] = { fg = colors.salmon },
+    ["@lsp.typemod.variable.defaultLibrary"] = { fg = colors.teal },
   }
 end
 
@@ -122,6 +170,10 @@ local function diagnostics(levels, colors, ui)
     DiagnosticWarn = { fg = levels.warning or colors.orange },
     DiagnosticInfo = { fg = levels.info or colors.blue },
     DiagnosticHint = { fg = colors.purple or colors.teal },
+    DiagnosticUnnecessary = {
+      fg = ui.uibackground == "NONE" and (ui.defaultalt or "#5a5a5a")
+        or blend_hex(ui.default or "#ffffff", ui.uibackground, 0.67),
+    },
     DiagnosticUnderlineError = underline(levels.danger or colors.red),
     DiagnosticUnderlineWarn = underline(levels.warning or colors.orange),
     DiagnosticUnderlineInfo = underline(levels.info or colors.blue),
@@ -144,7 +196,6 @@ local function ui_groups(ui, colors, levels, opts)
   local accent = colors.purple or colors.blue or primary
   local italic = opts.italic ~= false
   local bold = opts.bold ~= false
-
   local groups = {
     Normal = { fg = fg, bg = bg },
     NormalNC = { fg = fg, bg = bg },
@@ -152,11 +203,15 @@ local function ui_groups(ui, colors, levels, opts)
     FloatBorder = { fg = dim, bg = bg_alt },
     FloatTitle = { fg = primary, bg = bg_alt, bold = bold },
     Comment = { fg = dim, italic = italic },
-    CursorLine = { bg = bg_mid },
-    CursorColumn = { bg = bg_mid },
-    CursorLineNr = { fg = primary, bg = bg_mid, bold = bold },
-    LineNr = { fg = dim, bg = bg_mid },
-    Visual = { bg = ui.primaryalt or "#444444" },
+    CursorLine = { bg = bg == "NONE" and bg_mid or blend_hex(primary, bg, 0.06) },
+    CursorColumn = { bg = bg == "NONE" and bg_mid or blend_hex(primary, bg, 0.06) },
+    CursorLineNr = {
+      fg = bg == "NONE" and primary or blend_hex(fg, bg_mid, 0.6),
+      bg = bg_mid,
+      bold = bold,
+    },
+    LineNr = { fg = bg == "NONE" and dim or blend_hex(fg, bg, 0.25), bg = bg_mid },
+    Visual = { bg = bg == "NONE" and (ui.primaryalt or "#444444") or blend_hex(primary, bg, 0.3) },
     Search = { fg = bg, bg = levels.warning or colors.orange },
     IncSearch = { fg = bg, bg = levels.info or colors.blue, bold = bold },
     MatchParen = { fg = accent, bold = bold },
@@ -256,6 +311,14 @@ local function plugin_groups(colors, ui, levels)
     CmpItemKindClass = { fg = colors.purple },
     CmpItemKindInterface = { fg = colors.purple },
     CmpItemKindModule = { fg = colors.teal },
+
+    -- Blink Indent
+    BlinkIndent = {
+      fg = blend_hex(ui.defaultalt or ui.default or colors.blue or "#666666", ui.uibackground, 0.2),
+    },
+    BlinkIndentScope = {
+      fg = blend_hex(ui.defaultalt or ui.default or colors.blue or "#666666", ui.uibackground, 0.8),
+    },
   }
 
   merge(g, neo_tree)
